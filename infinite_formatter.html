@@ -1,0 +1,847 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Infinite Formatter — Message Formatter for IL</title>
+<style>
+  :root{
+    --bg:#f7f8fb; --panel:#fff; --text:#0b1220; --muted:#6b7280; --accent:#0ea5a4;
+    --border: #e6e9ef; --field-border:#cfd7e6;
+  }
+  [data-theme="dark"]{
+    --bg:#07101a; --panel:#071522; --text:#dbeafe; --muted:#9aa4b2; --accent:#22d3ee;
+    --border:#123043; --field-border:#1f2f3a;
+  }
+  html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;}
+  body{background:var(--bg);color:var(--text);padding:18px;box-sizing:border-box;}
+  .wrap{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:1fr;gap:12px}
+  header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  header h1{font-size:18px;margin:0}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .btn{background:var(--panel);border:1px solid var(--border);padding:6px 9px;border-radius:8px;cursor:pointer;color:var(--text);font-size:13px}
+  .btn.small{padding:6px;width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center}
+  .btn.primary{background:linear-gradient(90deg,var(--accent),#7dd3fc);color:#022;box-shadow:0 2px 10px rgba(0,0,0,0.08)}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px}
+  .editor-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .editor{min-height:260px;border-radius:8px;padding:10px;background:transparent;overflow:auto}
+  .editor[contenteditable]{outline:none;border:3px solid var(--field-border);border-radius:8px}
+  .label{font-size:13px;color:var(--muted);margin-bottom:6px}
+  .bottom-area{display:flex;flex-direction:column;gap:8px}
+  textarea{width:100%;min-height:260px;border-radius:8px;padding:10px;border:3px solid var(--field-border);font-family:monospace;background:transparent;color:var(--text);resize:vertical}
+  .controls{display:flex;gap:8px;align-items:center}
+  .color-swatch{width:34px;height:34px;border-radius:6px;border:1px solid rgba(0,0,0,0.06);cursor:pointer;display:inline-block}
+  .color-grid{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .split{display:flex;gap:8px;align-items:center}
+  footer{display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:13px;padding-top:8px}
+  .kbd{background:var(--border);padding:3px 6px;border-radius:6px;font-family:monospace}
+  .note{font-size:13px;color:var(--muted)}
+  .limit-warning{color:#b45309;font-weight:600;font-size:13px}
+  .modal-backdrop{position:fixed;inset:0;background:rgba(2,6,23,0.45);display:none;align-items:center;justify-content:center;z-index:1200}
+  .modal{background:var(--panel);border-radius:12px;padding:16px;border:1px solid var(--border);min-width:340px;box-shadow:0 10px 30px rgba(2,6,23,0.35)}
+  .modal h3{margin:0 0 8px 0;font-size:16px}
+  .modal .row{display:flex;gap:8px;align-items:center;margin-top:8px}
+  .modal .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+  input[type="color"]{border-radius:8px;border:1px solid var(--border);width:56px;height:42px}
+  input[type="text"], input[type="number"]{padding:6px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text)}
+  .preview-area{max-height:60vh;overflow:auto;padding:10px;border-radius:8px;border:1px solid var(--field-border);background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent)}
+  @media (max-width:980px){ .editor-row{grid-template-columns:1fr} }
+</style>
+</head>
+<body data-theme="light">
+<div class="wrap">
+  <header>
+    <h1>Infinite Formatter — Message Formatter for IL</h1>
+    <div style="display:flex;gap:8px;align-items:center">
+      <label style="display:flex;align-items:center;gap:8px">
+        Theme
+        <!-- kept select outside the 'toolbar-btn' mousedown prevention -->
+        <select id="themeToggle" class="btn theme-select">
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </label>
+      <button id="clearAll" class="btn" data-no-focus>Clear</button>
+      <a class="btn" href="https://infinite-lagrange.fandom.com/wiki/Chat_Escape_Codes" target="_blank" rel="noopener" data-no-focus>Escape codes ↗</a>
+    </div>
+  </header>
+
+  <div class="panel">
+    <div class="toolbar" role="toolbar" aria-label="Formatting toolbar">
+
+      <div class="split" style="align-items:center">
+        <button class="btn small toolbar-btn" id="underlineBtn" title="Toggle underline (#E / #e)" data-no-focus>U</button>
+        <button class="btn small toolbar-btn" id="linebreakBtn" title="Insert line break (#r)" data-no-focus>⏎</button>
+        <button class="btn small toolbar-btn" id="coordsBtn" title="Insert coordinates" data-no-focus>📍</button>
+      </div>
+
+      <div style="display:flex;gap:6px;align-items:center">
+        <div class="label" style="margin:0 6px 0 0">Colors:</div>
+        <div class="color-grid" id="colorGrid" aria-hidden="false"></div>
+        <div style="margin-left:8px">
+          <button class="btn toolbar-btn" id="openCustomColor" data-no-focus>Custom color</button>
+        </div>
+      </div>
+
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+        <input id="emojiInput" placeholder="emoji # (e.g. 1)" style="width:78px;padding:6px;border:1px solid var(--border);border-radius:8px"/>
+        <button class="btn toolbar-btn" id="insertEmoji" data-no-focus>Insert</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="editor-row">
+    <div>
+      <div class="label">Top: WYSIWYG editor (select text + use toolbar)</div>
+      <div id="topEditor" class="editor" contenteditable="true" spellcheck="false" aria-label="WYSIWYG editor"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+        <div class="note">Select text and choose a color or underline.</div>
+        <div><span id="topCount" class="note">0</span> / 10000</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="label">Bottom: Infinite Lagrange formatted text</div>
+      <div class="bottom-area">
+        <textarea id="bottomArea" spellcheck="false" aria-label="Formatted code" maxlength="10000"></textarea>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="display:flex;gap:8px">
+            <button id="copyBtn" class="btn primary" data-no-focus>Copy formatted</button>
+            <button id="previewRawBtn" class="btn" data-no-focus>Preview (simulated)</button>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center">
+            <div class="note"><span id="bottomCount">0</span> / 10000</div>
+            <div id="saveNote" class="note">Live sync ↔︎</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <div class="note">Works with: in-game mails, private messages & chat. Uses hex codes (#cRRGGBB) and named color codes (#R, #G, ...), underline (#E/#e), line break (#r).</div>
+    <div class="kbd">Saved locally in browser</div>
+  </footer>
+</div>
+
+<!-- Custom color modal -->
+<div id="modalBackdrop" class="modal-backdrop" role="dialog" aria-modal="true">
+  <div class="modal" role="document" aria-labelledby="modalTitle">
+    <h3 id="modalTitle">Custom color</h3>
+    <div class="row" style="align-items:center">
+      <input id="modalColorPicker" type="color" value="#ff00ff" />
+      <input id="modalHexInput" type="text" value="#FF00FF" style="width:120px"/>
+      <div id="modalPreview" style="margin-left:8px;padding:6px 10px;border-radius:8px;border:1px solid var(--border)">Preview</div>
+    </div>
+    <div class="actions">
+      <button id="modalCancel" class="btn">Cancel</button>
+      <button id="modalOk" class="btn primary">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Coordinates modal -->
+<div id="coordBackdrop" class="modal-backdrop" role="dialog" aria-modal="true">
+  <div class="modal" role="document" aria-labelledby="coordTitle">
+    <h3 id="coordTitle">Insert coordinates</h3>
+    <div style="margin-top:6px;font-size:13px;color:var(--muted)">Enter X and Y (0–9999). Typing more than 4 digits will push overflow into Y.</div>
+    <div class="row" style="margin-top:10px">
+      <input id="coordX" type="text" inputmode="numeric" maxlength="8" placeholder="X (max 4)" style="width:120px"/>
+      <input id="coordY" type="text" inputmode="numeric" maxlength="4" placeholder="Y (max 4)" style="width:120px"/>
+    </div>
+    <div class="actions">
+      <button id="coordCancel" class="btn">Cancel</button>
+      <button id="coordOk" class="btn primary">Insert</button>
+    </div>
+  </div>
+</div>
+
+<!-- Preview modal -->
+<div id="previewBackdrop" class="modal-backdrop" role="dialog" aria-modal="true">
+  <div class="modal" role="document" aria-labelledby="previewTitle" style="min-width:480px;">
+    <h3 id="previewTitle">Simulated Preview</h3>
+    <div id="previewContent" class="preview-area" aria-live="polite"></div>
+    <div class="actions" style="margin-top:12px">
+      <button id="previewClose" class="btn">Close</button>
+      <button id="previewCopy" class="btn primary">Copy formatted</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------- CONFIG ---------- */
+const MAX_LEN = 10000;
+const namedColorMap = {
+  '#B':'#0000FF', // blue
+  '#D':'#FFD700', // gold
+  '#G':'#00FF00', // green
+  '#K':'#000000', // black
+  '#O':'#FFA500', // orange
+  '#P':'#FFC0CB', // pink
+  '#R':'#FF0000', // red
+  '#U':'#FF00FF', // magenta
+  '#W':'#FFFFFF', // white
+  '#Y':'#FFFF00'  // yellow
+};
+const namedCodesByHex = Object.fromEntries(Object.entries(namedColorMap).map(([k,v])=>[v.toUpperCase(), k]));
+
+/* ---------- ELEMENTS ---------- */
+const topEditor = document.getElementById('topEditor');
+const bottomArea = document.getElementById('bottomArea');
+const topCount = document.getElementById('topCount');
+const bottomCount = document.getElementById('bottomCount');
+const copyBtn = document.getElementById('copyBtn');
+const previewRawBtn = document.getElementById('previewRawBtn');
+const emojiInput = document.getElementById('emojiInput');
+const insertEmojiBtn = document.getElementById('insertEmoji');
+const openCustom = document.getElementById('openCustomColor');
+
+const modalBackdrop = document.getElementById('modalBackdrop');
+const modalColorPicker = document.getElementById('modalColorPicker');
+const modalHexInput = document.getElementById('modalHexInput');
+const modalPreview = document.getElementById('modalPreview');
+const modalCancel = document.getElementById('modalCancel');
+const modalOk = document.getElementById('modalOk');
+
+const coordBackdrop = document.getElementById('coordBackdrop');
+const coordX = document.getElementById('coordX');
+const coordY = document.getElementById('coordY');
+const coordCancel = document.getElementById('coordCancel');
+const coordOk = document.getElementById('coordOk');
+
+const previewBackdrop = document.getElementById('previewBackdrop');
+const previewContent = document.getElementById('previewContent');
+const previewClose = document.getElementById('previewClose');
+const previewCopy = document.getElementById('previewCopy');
+
+const themeToggle = document.getElementById('themeToggle');
+const clearAllBtn = document.getElementById('clearAll');
+
+/* ---------- STATE ---------- */
+let lastFocused = topEditor; // last focused editing field (topEditor or bottomArea)
+let pendingCustomApplyCallback = null;
+let selectionBackup = null;
+let selectionLocked = false; // when custom modal open
+
+/* ---------- UTIL ---------- */
+function updateCounts(){
+  const topLen = (topEditor.textContent || '').length;
+  const bottomLen = (bottomArea.value || '').length;
+  topCount.textContent = topLen;
+  bottomCount.textContent = bottomLen;
+  if(topLen > MAX_LEN) topCount.classList.add('limit-warning'); else topCount.classList.remove('limit-warning');
+  if(bottomLen > MAX_LEN) bottomCount.classList.add('limit-warning'); else bottomCount.classList.remove('limit-warning');
+}
+function sanitizeHexInput(s){
+  let t = (s||'').trim().toUpperCase();
+  if(t.startsWith('#')) t = t.slice(1);
+  t = t.replace(/[^0-9A-F]/g,'').slice(0,6);
+  if(t.length === 3) t = t.split('').map(ch=>ch+ch).join('');
+  if(t.length !== 6) return null;
+  return '#' + t;
+}
+
+/* ---------- FOCUS TRACKING ---------- */
+topEditor.addEventListener('focus', ()=> lastFocused = topEditor);
+bottomArea.addEventListener('focus', ()=> lastFocused = bottomArea);
+
+/* Prevent toolbar from stealing focus: only for elements marked .toolbar-btn or with data-no-focus */
+/* Do NOT apply to the theme select (so the select can open normally) */
+document.querySelectorAll('.toolbar-btn, [data-no-focus]').forEach(el => {
+  el.addEventListener('mousedown', (e) => {
+    // prevent focusing on this mousedown but still allow click to run
+    e.preventDefault();
+    // dispatch click next tick to ensure handlers run
+    requestAnimationFrame(()=> el.click());
+  });
+});
+
+/* ---------- COLOR GRID ---------- */
+const colorGrid = document.getElementById('colorGrid');
+const defaultSwatches = [
+  {code:'#B', color:namedColorMap['#B']},
+  {code:'#D', color:namedColorMap['#D']},
+  {code:'#G', color:namedColorMap['#G']},
+  {code:'#K', color:namedColorMap['#K']},
+  {code:'#O', color:namedColorMap['#O']},
+  {code:'#P', color:namedColorMap['#P']},
+  {code:'#R', color:namedColorMap['#R']},
+  {code:'#U', color:namedColorMap['#U']},
+  {code:'#W', color:namedColorMap['#W']},
+  {code:'#Y', color:namedColorMap['#Y']}
+];
+function renderSwatches(){
+  colorGrid.innerHTML = '';
+  for(const s of defaultSwatches){
+    const btn = document.createElement('button');
+    btn.className = 'color-swatch toolbar-btn';
+    btn.title = s.code;
+    btn.style.background = s.color;
+    btn.dataset.code = s.code;
+    btn.addEventListener('click', ()=> applyToSelection('color', {named:true, code:s.code}));
+    colorGrid.appendChild(btn);
+  }
+}
+renderSwatches();
+
+/* ---------- CUSTOM COLOR MODAL (with selection lock) ---------- */
+function lockSelection(){
+  const sel = window.getSelection();
+  if(sel.rangeCount) {
+    selectionBackup = sel.getRangeAt(0).cloneRange();
+  } else selectionBackup = null;
+  selectionLocked = true;
+  // intercept mousedown globally to prevent accidental focus changes outside modal
+  document.addEventListener('mousedown', blockMouseWhileModal, true);
+}
+function restoreSelection(){
+  selectionLocked = false;
+  document.removeEventListener('mousedown', blockMouseWhileModal, true);
+  if(selectionBackup){
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(selectionBackup);
+  }
+}
+function blockMouseWhileModal(e){
+  // allow clicks inside the modal
+  const modal = modalBackdrop.querySelector('.modal');
+  if(modal && modal.contains(e.target)) return;
+  const coordModal = coordBackdrop.querySelector('.modal');
+  if(coordModal && coordModal.contains(e.target)) return;
+  const previewModal = previewBackdrop.querySelector('.modal');
+  if(previewModal && previewModal.contains(e.target)) return;
+  // otherwise prevent default to avoid focus change
+  e.preventDefault();
+  e.stopPropagation();
+}
+
+function openColorModal(onOk){
+  pendingCustomApplyCallback = onOk;
+  // save & lock selection if topEditor is lastFocused
+  if(lastFocused === topEditor){
+    lockSelection();
+  }
+  modalBackdrop.style.display = 'flex';
+  modalColorPicker.value = modalHexInput.value || '#FF00FF';
+  modalPreview.style.background = modalColorPicker.value;
+  // focus color picker visually but don't change page selection
+  modalColorPicker.focus();
+}
+function closeColorModal(){
+  pendingCustomApplyCallback = null;
+  modalBackdrop.style.display = 'none';
+  restoreSelection();
+  if(lastFocused) lastFocused.focus();
+}
+modalColorPicker.addEventListener('input', ()=>{
+  modalHexInput.value = modalColorPicker.value.toUpperCase();
+  modalPreview.style.background = modalColorPicker.value;
+});
+modalHexInput.addEventListener('input', ()=>{
+  const s = sanitizeHexInput(modalHexInput.value);
+  if(s){
+    modalColorPicker.value = s;
+    modalPreview.style.background = s;
+    modalHexInput.value = s.toUpperCase();
+  }
+});
+modalCancel.addEventListener('click', ()=> closeColorModal());
+modalOk.addEventListener('click', ()=>{
+  const hex = sanitizeHexInput(modalColorPicker.value) || '#FFFFFF';
+  // restore selection before applying so applyToSelection uses correct range
+  restoreSelection();
+  if(typeof pendingCustomApplyCallback === 'function') pendingCustomApplyCallback(hex);
+  closeColorModal();
+});
+openCustom.addEventListener('click', ()=> openColorModal((hex) => applyToSelection('color', {named:false, hex})));
+
+/* ---------- COORD MODAL ---------- */
+function openCoordModal(){
+  // lock selection for topEditor if it was lastFocused
+  if(lastFocused === topEditor) lockSelection();
+  coordBackdrop.style.display = 'flex';
+  coordX.value = '';
+  coordY.value = '';
+  coordX.focus();
+}
+function closeCoordModal(){
+  coordBackdrop.style.display = 'none';
+  restoreSelection();
+  if(lastFocused) lastFocused.focus();
+}
+coordCancel.addEventListener('click', closeCoordModal);
+coordOk.addEventListener('click', ()=>{
+  const X = coordX.value.trim();
+  const Y = coordY.value.trim();
+  if(/^\d{1,4}$/.test(X) && /^\d{1,4}$/.test(Y)){
+    insertTextAtCaret(`(${X},${Y})`);
+    syncTopToBottom();
+  }
+  closeCoordModal();
+});
+
+/* Auto-split: allow coordX to accept a long string and overflow into Y */
+coordX.addEventListener('input', ()=>{
+  // allow digits only
+  coordX.value = coordX.value.replace(/\D/g,'');
+  if(coordX.value.length > 4){
+    const overflow = coordX.value.slice(4);
+    coordX.value = coordX.value.slice(0,4);
+    coordY.value = (coordY.value + overflow).replace(/\D/g,'').slice(0,4);
+    coordY.focus();
+  } else if(coordX.value.length === 4){
+    // auto jump
+    coordY.focus();
+  }
+});
+coordY.addEventListener('input', ()=> { coordY.value = coordY.value.replace(/\D/g,'').slice(0,4); });
+
+/* ---------- SELECTION & INSERT HELPERS ---------- */
+function insertTextAtCaret(text){
+  if(lastFocused === bottomArea){
+    // textarea
+    const el = bottomArea;
+    const s = el.selectionStart, e = el.selectionEnd;
+    el.value = el.value.slice(0,s) + text + el.value.slice(e);
+    el.selectionStart = el.selectionEnd = s + text.length;
+    el.focus();
+    syncBottomToTop();
+    return;
+  }
+  // contenteditable topEditor
+  const sel = window.getSelection();
+  if(selectionLocked && selectionBackup){
+    // if selection was locked when modal opened, restore it
+    sel.removeAllRanges();
+    sel.addRange(selectionBackup);
+  }
+  if(!sel.rangeCount || !topEditor.contains(sel.anchorNode)){
+    topEditor.appendChild(document.createTextNode(text));
+    setEndOfContenteditable(topEditor);
+    syncTopToBottom();
+    return;
+  }
+  const range = sel.getRangeAt(0);
+  range.deleteContents();
+  const node = document.createTextNode(text);
+  range.insertNode(node);
+  range.setStartAfter(node);
+  range.collapse(true);
+  sel.removeAllRanges(); sel.addRange(range);
+  topEditor.focus();
+  syncTopToBottom();
+}
+function setEndOfContenteditable(contentEditableElement) {
+  contentEditableElement.focus();
+  if (typeof window.getSelection != "undefined"
+      && typeof document.createRange != "undefined") {
+      var range = document.createRange();
+      range.selectNodeContents(contentEditableElement);
+      range.collapse(false);
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+  }
+}
+
+/* ---------- applyToSelection (color / underline / linebreak / coords) ---------- */
+function applyToSelection(action, payload){
+  // if last focused is bottom textarea, insert corresponding encoded codes
+  if(lastFocused === bottomArea){
+    if(action === 'color'){
+      if(payload.named) bottomAreaInsert(payload.code);
+      else bottomAreaInsert('#c' + payload.hex.replace('#','').toUpperCase());
+    } else if(action === 'underline'){
+      bottomAreaInsert('#E');
+    } else if(action === 'linebreak'){
+      bottomAreaInsert('#r');
+    } else if(action === 'coords'){
+      bottomAreaInsert(payload);
+    }
+    return;
+  }
+
+  // For topEditor selection/caret operations
+  const sel = window.getSelection();
+  if(selectionLocked && selectionBackup){
+    sel.removeAllRanges();
+    sel.addRange(selectionBackup);
+  }
+
+  if(!sel.rangeCount){
+    topEditor.focus();
+  }
+  const range = sel.rangeCount ? sel.getRangeAt(0) : null;
+  const isCollapsed = !range || range.collapsed;
+
+  if(action === 'linebreak'){
+    if(range){
+      const br = document.createElement('br');
+      range.insertNode(br);
+      range.setStartAfter(br); range.collapse(true);
+      sel.removeAllRanges(); sel.addRange(range);
+      syncTopToBottom();
+      return;
+    } else {
+      topEditor.appendChild(document.createElement('br'));
+      syncTopToBottom();
+      return;
+    }
+  }
+  if(action === 'coords'){
+    insertTextAtCaret(payload);
+    return;
+  }
+
+  if(isCollapsed){
+    const span = document.createElement('span');
+    span.textContent = '';
+    if(action === 'color'){
+      if(payload.named) span.style.color = namedColorMap[payload.code];
+      else span.style.color = payload.hex;
+    } else if(action === 'underline'){
+      span.style.textDecoration = payload ? 'underline' : '';
+    }
+    const r = (window.getSelection().rangeCount) ? window.getSelection().getRangeAt(0) : null;
+    if(r) r.insertNode(span);
+    // caret inside
+    const newR = document.createRange();
+    newR.setStart(span,0); newR.collapse(true);
+    const s = window.getSelection();
+    s.removeAllRanges(); s.addRange(newR);
+    syncTopToBottom();
+    return;
+  }
+
+  // Wrap selection
+  const wrapper = document.createElement('span');
+  if(action === 'color'){
+    if(payload.named) wrapper.style.color = namedColorMap[payload.code];
+    else wrapper.style.color = payload.hex;
+  } else if(action === 'underline'){
+    wrapper.style.textDecoration = payload ? 'underline' : '';
+  }
+  try {
+    range.surroundContents(wrapper);
+  } catch(e){
+    const docfrag = range.extractContents();
+    wrapper.appendChild(docfrag);
+    range.insertNode(wrapper);
+  }
+  // collapse after wrapper
+  const nr = document.createRange();
+  nr.setStartAfter(wrapper); nr.collapse(true);
+  sel.removeAllRanges(); sel.addRange(nr);
+  syncTopToBottom();
+}
+
+/* bottomArea insertion helper */
+function bottomAreaInsert(txt){
+  const el = bottomArea;
+  const s = el.selectionStart, e = el.selectionEnd;
+  el.value = el.value.slice(0,s) + txt + el.value.slice(e);
+  el.selectionStart = el.selectionEnd = s + txt.length;
+  el.focus();
+  syncBottomToTop();
+}
+
+/* ---------- toolbar event handlers ---------- */
+document.querySelectorAll('.color-swatch').forEach(btn=>{
+  btn.addEventListener('click', ()=> {
+    const code = btn.dataset.code;
+    applyToSelection('color', {named:true, code});
+  });
+});
+document.getElementById('underlineBtn').addEventListener('click', ()=> applyToSelection('underline', true));
+document.getElementById('linebreakBtn').addEventListener('click', ()=> applyToSelection('linebreak'));
+document.getElementById('coordsBtn').addEventListener('click', ()=> openCoordModal());
+
+insertEmojiBtn.addEventListener('click', ()=>{
+  const v = (emojiInput.value || '').trim();
+  if(!v) return;
+  if(!/^\d+$/.test(v)){ alert('Emoji code must be a number (e.g. 1)'); return; }
+  insertTextAtCaret(`{${v}}`);
+  emojiInput.value = '';
+});
+
+/* ---------- Serialization & Parsing ---------- */
+function rgbToHex(rgb){
+  const m = rgb && rgb.match(/(\d+),\s*(\d+),\s*(\d+)/);
+  if(!m) return null;
+  return "#" + [1,2,3].map(i=>Number(m[i]).toString(16).padStart(2,'0')).join('').toUpperCase();
+}
+
+function serializeEditor(root){
+  let out = '';
+  let curColor = null;
+  let curUnder = false;
+
+  function pushColor(newColor){
+    if(newColor === curColor) return;
+    curColor = newColor;
+    if(!newColor) out += '#n';
+    else if(newColor.startsWith('#') && namedCodesByHex[newColor.toUpperCase()]) out += namedCodesByHex[newColor.toUpperCase()];
+    else if(newColor.startsWith('#')) out += '#c' + newColor.replace('#','').toUpperCase();
+    else if(newColor.startsWith('named:')) out += newColor.slice(6);
+  }
+  function pushUnder(on){
+    if(on === curUnder) return;
+    curUnder = on;
+    out += on ? '#E' : '#e';
+  }
+
+  function walk(node){
+    if(node.nodeType === Node.TEXT_NODE){ out += node.nodeValue; return; }
+    if(node.nodeType !== Node.ELEMENT_NODE) return;
+    const el = node;
+    if(el.tagName === 'BR'){ out += '#r'; return; }
+    const st = window.getComputedStyle(el);
+    let elColor = null, elUnder = false;
+    if(st && st.color) elColor = rgbToHex(st.color);
+    if(st && (st.textDecorationLine && st.textDecorationLine.includes('underline'))) elUnder = true;
+    pushColor(elColor);
+    pushUnder(elUnder);
+    for(const child of el.childNodes) walk(child);
+  }
+
+  for(const node of root.childNodes){
+    if(node.nodeType === Node.ELEMENT_NODE && node.tagName === 'DIV'){
+      for(const child of node.childNodes) walk(child);
+      out += '#r';
+    } else walk(node);
+  }
+  return out;
+}
+
+function parseFormattedToDom(txt){
+  const frag = document.createDocumentFragment();
+  let i = 0;
+  let curColor = null;
+  let curUnder = false;
+  let buf = '';
+
+  function flush(){
+    if(!buf) return;
+    const span = document.createElement('span');
+    span.textContent = buf;
+    if(curColor){
+      if(curColor.startsWith('named:')) span.style.color = namedColorMap[curColor.slice(6)];
+      else span.style.color = curColor;
+    }
+    if(curUnder) span.style.textDecoration = 'underline';
+    frag.appendChild(span);
+    buf = '';
+  }
+
+  while(i < txt.length){
+    if(txt[i] === '#' && i+1 < txt.length){
+      flush();
+      const c = txt[i+1];
+      if(c === 'c'){
+        const candidate = txt.substr(i+2,6);
+        if(/^[0-9A-Fa-f]{6}$/.test(candidate)){
+          curColor = '#' + candidate.toUpperCase();
+          i += 8; continue;
+        }
+      } else if(c === 'n'){ curColor = null; i += 2; continue; }
+      else if(c === 'E'){ curUnder = true; i += 2; continue; }
+      else if(c === 'e'){ curUnder = false; i += 2; continue; }
+      else if(c === 'r'){ const br = document.createElement('br'); frag.appendChild(br); i += 2; continue; }
+      else {
+        const candidate = '#' + c.toUpperCase();
+        if(candidate in namedColorMap){
+          curColor = 'named:' + candidate;
+          i += 2; continue;
+        }
+      }
+    }
+    if(txt[i] === '{'){
+      const m = txt.slice(i).match(/^\{(\d+)\}/);
+      if(m){
+        flush();
+        const span = document.createElement('span');
+        span.textContent = `{${m[1]}}`; // placeholder
+        if(curColor){
+          if(curColor.startsWith('named:')) span.style.color = namedColorMap[curColor.slice(6)];
+          else span.style.color = curColor;
+        }
+        if(curUnder) span.style.textDecoration = 'underline';
+        frag.appendChild(span);
+        i += m[0].length;
+        continue;
+      }
+    }
+    buf += txt[i++];
+  }
+  flush();
+  return frag;
+}
+
+/* ---------- SYNC ---------- */
+let suppressTop = false, suppressBottom = false;
+function syncTopToBottom(){
+  if(suppressTop) return;
+  suppressBottom = true;
+  let formatted = serializeEditor(topEditor);
+  if(formatted.length > MAX_LEN) formatted = formatted.slice(0, MAX_LEN);
+  bottomArea.value = formatted;
+  updateCounts();
+  suppressBottom = false;
+}
+function syncBottomToTop(){
+  if(suppressBottom) return;
+  suppressTop = true;
+  let txt = bottomArea.value || '';
+  if(txt.length > MAX_LEN) txt = txt.slice(0, MAX_LEN);
+  const frag = parseFormattedToDom(txt);
+  topEditor.innerHTML = '';
+  topEditor.appendChild(frag);
+  enforceTopLimit();
+  updateCounts();
+  suppressTop = false;
+}
+function enforceTopLimit(){
+  const txt = (topEditor.textContent || '');
+  if(txt.length <= MAX_LEN){ updateCounts(); return; }
+  topEditor.textContent = txt.slice(0, MAX_LEN);
+  updateCounts();
+  syncTopToBottom();
+}
+
+/* events */
+topEditor.addEventListener('input', ()=>{ enforceTopLimit(); syncTopToBottom(); });
+bottomArea.addEventListener('input', ()=>{ if(suppressBottom) return; if(bottomArea.value.length > MAX_LEN) bottomArea.value = bottomArea.value.slice(0, MAX_LEN); updateCounts(); syncBottomToTop(); });
+
+/* paste handlers */
+topEditor.addEventListener('paste', (e)=>{ e.preventDefault(); const text = (e.clipboardData || window.clipboardData).getData('text'); document.execCommand('insertText', false, text.slice(0, MAX_LEN - (topEditor.textContent||'').length)); });
+bottomArea.addEventListener('paste', (e)=>{ setTimeout(()=> { if(bottomArea.value.length > MAX_LEN) bottomArea.value = bottomArea.value.slice(0, MAX_LEN); syncBottomToTop(); }, 10); });
+
+/* ---------- Copy and Preview (simulated) ---------- */
+document.getElementById('copyBtn').addEventListener('click', async ()=>{
+  try{ await navigator.clipboard.writeText(bottomArea.value || ''); const b = document.getElementById('copyBtn'); const old = b.innerText; b.innerText = 'Copied'; setTimeout(()=> b.innerText = old,900); }
+  catch(e){ alert('Clipboard failed — select & copy manually.'); }
+});
+
+previewRawBtn.addEventListener('click', ()=> {
+  // render simulated preview using parseFormattedToDom but convert placeholders
+  previewContent.innerHTML = '';
+  const htmlFrag = parseFormattedToDom(bottomArea.value || '');
+  // replace `{N}` placeholders with boxed labels
+  // parseFormattedToDom already leaves `{N}` as text - we transform them into styled spans
+  const walker = document.createTreeWalker(htmlFrag, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, null, false);
+  const toAppend = document.createDocumentFragment();
+  let node;
+  while(node = walker.nextNode()){
+    // we will collect nodes from htmlFrag; simpler: serialize htmlFrag to temp div and then replace placeholders
+  }
+  // easier approach: get the string and then parse and render manually using the same parser but this time create nicer placeholders
+  const parsed = bottomArea.value || '';
+  // We'll iterate similarly to parseFormattedToDom but generate prettier nodes
+  function buildPreview(txt){
+    let i=0; let curColor=null; let curUnder=false; let buf='';
+    const out = document.createDocumentFragment();
+    function flushBuf(){
+      if(!buf) return;
+      const span = document.createElement('span');
+      span.textContent = buf;
+      if(curColor){
+        if(curColor.startsWith('named:')) span.style.color = namedColorMap[curColor.slice(6)];
+        else span.style.color = curColor;
+      }
+      if(curUnder) span.style.textDecoration = 'underline';
+      out.appendChild(span);
+      buf='';
+    }
+    while(i < txt.length){
+      if(txt[i]==='#' && i+1 < txt.length){
+        flushBuf();
+        const c = txt[i+1];
+        if(c === 'c'){
+          const cand = txt.substr(i+2,6);
+          if(/^[0-9A-Fa-f]{6}$/.test(cand)){ curColor = '#' + cand.toUpperCase(); i+=8; continue; }
+        } else if(c === 'n'){ curColor = null; i+=2; continue; }
+        else if(c === 'E'){ curUnder = true; i+=2; continue; }
+        else if(c === 'e'){ curUnder = false; i+=2; continue; }
+        else if(c === 'r'){ out.appendChild(document.createElement('br')); i+=2; continue; }
+        else {
+          const cand = '#' + c.toUpperCase();
+          if(cand in namedColorMap){ curColor = 'named:' + cand; i+=2; continue; }
+        }
+      }
+      if(txt[i] === '{'){
+        const m = txt.slice(i).match(/^\{(\d+)\}/);
+        if(m){
+          flushBuf();
+          const ph = document.createElement('span');
+          ph.textContent = ` ⦿${m[1]} `;
+          ph.style.display = 'inline-block';
+          ph.style.padding = '2px 6px';
+          ph.style.margin = '0 2px';
+          ph.style.borderRadius = '6px';
+          ph.style.border = '1px solid rgba(0,0,0,0.08)';
+          ph.style.fontFamily = 'monospace';
+          if(curColor){
+            if(curColor.startsWith('named:')) ph.style.color = namedColorMap[curColor.slice(6)];
+            else ph.style.color = curColor;
+          }
+          out.appendChild(ph);
+          i += m[0].length;
+          continue;
+        }
+      }
+      buf += txt[i++];
+    }
+    flushBuf();
+    return out;
+  }
+  const pretty = buildPreview(bottomArea.value || '');
+  previewContent.appendChild(pretty);
+  previewBackdrop.style.display = 'flex';
+});
+
+/* preview modal actions */
+previewClose.addEventListener('click', ()=> { previewBackdrop.style.display = 'none'; if(lastFocused) lastFocused.focus(); });
+previewCopy.addEventListener('click', async ()=> {
+  try{ await navigator.clipboard.writeText(bottomArea.value || ''); const old = previewCopy.innerText; previewCopy.innerText = 'Copied'; setTimeout(()=> previewCopy.innerText = old,900); }
+  catch(e){ alert('Copy failed'); }
+});
+
+/* ---------- STORAGE ---------- */
+function saveState(){ localStorage.setItem('inlag_top', topEditor.innerHTML); localStorage.setItem('inlag_bottom', bottomArea.value); }
+function restoreState(){
+  const b = localStorage.getItem('inlag_bottom');
+  const t = localStorage.getItem('inlag_top');
+  if(b !== null){ bottomArea.value = b; syncBottomToTop(); }
+  else if(t !== null){ topEditor.innerHTML = t; syncTopToBottom(); }
+}
+window.addEventListener('beforeunload', saveState);
+restoreState();
+updateCounts();
+
+/* ---------- INIT SAMPLE ---------- */
+if((topEditor.innerHTML || '').trim() === ''){
+  topEditor.innerHTML = '<div>Hello officer, <span style="color: #FF0000">urgent</span> message.</div><div>Coordinates: (1234,5678)</div>';
+  syncTopToBottom();
+}
+
+/* ---------- THEME, CLEAR ---------- */
+themeToggle.addEventListener('change', ()=> document.body.setAttribute('data-theme', themeToggle.value));
+clearAllBtn.addEventListener('click', ()=>{ topEditor.innerHTML=''; bottomArea.value=''; updateCounts(); });
+
+/* ---------- Helpers for external calls ---------- */
+
+function openColorModalForTest(){ openColorModal((hex) => applyToSelection('color', {named:false, hex})); }
+
+/* ensure toolbar buttons using mousedown override remain clickable and do not steal caret */
+document.querySelectorAll('.toolbar button, .toolbar .color-swatch').forEach(el=>{
+  // keep already assigned mousedown handler above; but ensure double-binding not adding issue
+});
+
+/* expose some debugging */
+window._il_tools = { serializeEditor, parseFormattedToDom, applyToSelection };
+
+/* ---------- End of script ---------- */
+</script>
+</body>
+</html>
